@@ -37,7 +37,10 @@ Add better amp for Microphone
 
 Add Support for JogWheel for destination selection/modes
 
+### The current Farnsworth Project
+
+![2a2deadc2fc2ff37](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/86b3b2e3-a4dd-43d1-9928-bf8416e8bee0)
 
 
-
+![c6f870eb24ed178d](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/91131192-dc36-4a74-999a-d2169781ccfb)
 
