@@ -19,7 +19,7 @@ Currently very simple UDP with no encoding,compression,error or loss correction.
 Only currently supports IP to IP connection set by ini file in SD Card
 
 ## SDCard
-SD card slot for programming/storage uses FatFS and an ini file parced by iniparcer library
+SD card slot for programming/storage uses FatFS and an ini file parced by iniparcer library. An Example INI file is in SDCardContents folder.
 
 # Current Project State
   Working, with issues see ToDo
