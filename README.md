@@ -26,11 +26,17 @@ SD card slot for programming/storage uses FatFS and an ini file parced by inipar
 
 ## ToDo
 Document Software
+
 Sort Licencing issues and attribution
+
 Sort DMA 8/16 bit DMA to display
+
 Add Alaw Audio encoding
+
 Add better amp for Microphone
+
 Add Support for JogWheel for destination selection/modes
+
 
 
 
