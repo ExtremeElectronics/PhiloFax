@@ -19,13 +19,16 @@ Currently very simple UDP with no encoding,compression,error or loss correction.
 Only currently supports IP to IP connection set by ini file in SD Card
 
 ## SDCard
-SD card slot for programming/storage uses FatFS and an ini file parced by iniparcer library. An Example INI file is in SDCardContents folder.
+SD card slot for programming/storage uses FatFS and an ini file parced by iniparcer library. An Example INI file is in SDCardContents folder. Currently the softwar wont start without this. 
+
+## USB Serial 
+USB serial has debug output
 
 # Current Project State
-  Working, with issues see ToDo
+  Working, with issues, see ToDo
 
 ## ToDo
-Document Software
+Document Software - blog via ExtremeElectronics. 
 
 Sort Licencing issues and attribution
 
@@ -37,7 +40,7 @@ Add better amp for Microphone
 
 Add Support for JogWheel for destination selection/modes
 
-### The current Farnsworth Project
+# The current Farnsworth Project - Physical items.
 
 ![2a2deadc2fc2ff37](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/86b3b2e3-a4dd-43d1-9928-bf8416e8bee0)
 
