@@ -1,0 +1,559 @@
+/**
+ * Farnsworth - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>	
+ *
+ * Camre Code - Copyright (c) 2022 Brian Starkey <stark3y@gmail.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+#include <stdio.h>
+
+//pico stuff
+#include "hardware/i2c.h"
+#include "pico/stdio.h"
+#include "pico/stdlib.h"
+#include "pico/cyw43_arch.h"
+#include "pico/multicore.h"
+#include "hardware/pwm.h"
+#include "hardware/adc.h"
+
+//wifi stuff
+
+#include "lwipopts.h"
+
+#include "lwip/pbuf.h"
+#include "lwip/udp.h"
+
+//camera driver
+#include "camera/camera.h"
+#include "camera/format.h"
+#include "camera/ov7670.h"
+
+//display driver
+#include "gc9a01/gc9a01.h"
+#include "gc9a01/gc9a01.c"
+#include "screen.c"
+
+#define USE_DMA 1
+
+//defaults and sdcard reader/parcer
+#include "settings.c"
+
+#define CAMERA_PIO      pio0
+#define CAMERA_BASE_PIN 16
+#define CAMERA_XCLK_PIN 21
+#define CAMERA_I2C	i2c1
+#define CAMERA_SDA      26
+#define CAMERA_SCL      27
+
+#define CYW43_SPI_PIO_PREFERRED_PIO 1
+
+
+//sound
+//must be pins on the same slice
+#define soundIO1 8
+#define soundIO2 9
+#define PWMrate 90
+#define Mike 28 //gpio pin
+#define MikeADC 2 //adc channel
+
+#define AUDIOFILTER 6 // delay between consecutive samples of noise max 15 smaller more noise
+
+uint PWMslice;
+struct repeating_timer stimer;
+
+#define SoundBuffMax 1024
+#define SoundPacket 100 //must be less than SoundBuffMax-1
+
+//sound buffers
+uint8_t MikeBuffer[SoundBuffMax];
+uint16_t MikeIn=0;
+uint16_t MikeOut=0;
+
+volatile uint8_t SpkBuffer[SoundBuffMax];
+volatile uint16_t SpkIn=0;
+volatile uint16_t SpkOut=0;
+
+void AddToSpkBuffer(uint8_t v);
+bool Sound_Timer_Callback(struct repeating_timer *t);
+
+//wifi
+
+extern const char * s_wifi_ssid;
+extern const char * s_wifi_pass;
+
+//TEST
+extern int loopback_audio;
+extern int loopback_video;
+
+//ip
+
+struct udp_pcb* pcb ;
+ip_addr_t target_addr;
+ip_addr_t my_addr;
+
+volatile uint8_t sendingudp=0;
+
+volatile uint8_t online=0;
+volatile uint8_t SendSound=0;
+
+volatile int GotData=0;
+
+volatile uint8_t p_buffer [600];
+
+volatile uint8_t receiving=0;
+
+
+static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p, const ip_addr_t *_addr, uint16_t _port) {
+    char *_pData = (char *)_p->payload;
+
+    if (GotData==1) printf("Overrun on RX \n");
+    
+    int c;
+
+    uint8_t yrx=_pData[0];
+    if (yrx<=display_width) {
+        if(loopback_video==0){
+            LCD_WriteLineFromBuff8(1,yrx,&_pData[1],display_width,0);
+        }    
+    }else{
+        if (yrx==255){
+            if (loopback_audio==0){
+              uint8_t v;
+              for(v=0;v<SoundPacket;v++) AddToSpkBuffer(_pData[1+v]);
+            }  
+        }
+    }
+
+    if(receiving<100)receiving=100;
+    pbuf_free(_p); // don't forget to release the buffer!!!!
+}
+
+
+void init_udp(){
+    err_t er;
+
+    //setup udp TX
+    ipaddr_aton(dest_addr, &target_addr);
+    pcb = udp_new();
+    er=udp_bind(pcb, IP_ADDR_ANY, LOCAL_PORT);
+    if (er != ERR_OK) {
+            printf("Failed to bind RX UDP! error=%d", er);
+        }
+    udp_recv(pcb, udpReceiveCallback, NULL);
+}
+
+void send_udp(char* msg,int msglen){
+//        printf("send UPD %s %i\n",msg,msglen);
+        struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, msglen+1, PBUF_RAM);
+        char *req = (char *)p->payload;
+        memset(req, 0, msglen+1);
+        int a;
+        for(a=0;a<msglen;a++) req[a]=msg[a];
+        req[a]=0;
+        err_t er = udp_sendto(pcb, p, &target_addr, dest_port);
+        pbuf_free(p);
+        if (er != ERR_OK) {
+            printf("Failed to send UDP packet! error=%d", er);
+        } else {
+//            printf("Sent packet \n\n");
+        }
+ //       sleep_ms(100);
+}
+
+void send_udp_blocking(char* msg,int msglen){
+   if (online){
+       while(sendingudp==1);
+       sendingudp=1;
+       send_udp( msg,msglen);
+       sendingudp=0;
+   }
+}
+
+
+static inline int __i2c_write_blocking(void *i2c_handle, uint8_t addr, const uint8_t *src, size_t len)
+{
+	return i2c_write_blocking((i2c_inst_t *)i2c_handle, addr, src, len, false);
+}
+
+static inline int __i2c_read_blocking(void *i2c_handle, uint8_t addr, uint8_t *dst, size_t len)
+{
+	return i2c_read_blocking((i2c_inst_t *)i2c_handle, addr, dst, len, false);
+}
+
+void ClearScreen(void){
+   LCD_WriteRectangle( 0, 0,display_width,display_height, BLACK);
+}
+
+void Rect(uint16_t x,uint16_t x1,uint16_t y,uint16_t y1,uint16_t colour){
+    LCD_WriteRectangle( x, y,(x1-x),(y1-y), colour);  
+}
+
+void TestScreen(void){
+
+   Rect(40,80,40,80,RED);
+   Rect(160,200,160,200,BLUE);
+   Rect(40,80,160,200,GREEN);
+   Rect(160,200,40,80,YELLOW);
+
+   LCD_Fast_Vline(display_width/2, 0, display_height, GREEN);
+   LCD_Fast_Hline(0, display_height/2, display_width, GREEN);
+
+   LCD_WritePixel(120, 120, WHITE);
+   LCD_WritePixel(122,122,BLUE);
+   LCD_WritePixel(120,122,RED);
+   
+//  drawch('X',WHITE,BLACK,120,120);   
+}
+
+void SDErrorScreen(void){
+//  ClearScreen();
+  printf("SD Error\n");
+  
+  ClearScreen();
+  char temp[250];
+  if (SDStatus==1) sprintf(temp,"No SD Card");
+  if (SDStatus==2) sprintf(temp,"Inifile read error ");
+  drawtext90(100, 20, temp, WHITE, BLACK);
+  printf("\nHalted\n");
+  while(1);
+}
+
+void IPScreen(void){
+  printf("ip screen\n");
+  ClearScreen();
+  char temp[250];
+  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
+  drawtext90(100, 20, temp, WHITE, BLACK);
+
+}
+
+void NoSigScreen(void){
+  printf("No Sig\n");
+//  TestScreen();
+  ClearScreen();
+  int c=0;
+  for(int y=0;y<240;y=y+6){
+      for(int x=0;x<230;x+=10){
+         if(c==0){c=3;}else{c=0;}
+         LCD_Fast_Vline(y+c,x,10,WHITE);
+      }
+  }      
+  char temp[250];
+  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
+  drawtext90(100, 20, temp, WHITE, BLACK);
+}
+
+uint8_t reverse(uint8_t b) {
+   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+   return b;
+}
+
+void Core1Main(void){
+     if (cyw43_arch_init()) {
+            printf("cyw43 failed to initialise\n");
+            while(1);
+        }
+        cyw43_arch_enable_sta_mode();
+
+	
+	printf("**************** STARTING Core 1 **************** \n\n");
+
+        printf("Connecting to Wi-Fi...\n");
+        int x=1;
+        while(x){
+            x=cyw43_arch_wifi_connect_timeout_ms(s_wifi_ssid, s_wifi_pass, CYW43_AUTH_WPA2_AES_PSK, 30000);
+            if (x) {
+                printf("trying. \n");
+                sleep_ms(500);
+            } else {
+                printf("\n\n************ Connected **************\n\n");
+                printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),LOCAL_PORT,dest_addr,dest_port );
+                printf("*************************************\n\n");
+            }
+        }
+
+        printf("\nWiFi Ready...\n");
+        IPScreen();
+        init_udp();
+        online=1;
+
+        printf("Core 1 start audio interrupt\n");
+        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
+        
+        while(1){
+           tight_loop_contents(); 
+           
+           if (SendSound==1){
+               send_udp_blocking(MikeBuffer, SoundPacket+1);
+               SendSound=0;
+           }
+        }
+          
+
+}
+
+void SetPWM(void){
+    gpio_init(soundIO1);
+    gpio_set_dir(soundIO1,GPIO_OUT);
+    gpio_set_function(soundIO1, GPIO_FUNC_PWM);
+
+    gpio_init(soundIO2);
+    gpio_set_dir(soundIO2,GPIO_OUT);
+    gpio_set_function(soundIO2, GPIO_FUNC_PWM);
+
+    PWMslice=pwm_gpio_to_slice_num (soundIO1);
+    pwm_set_clkdiv(PWMslice,16);
+    pwm_set_both_levels(PWMslice,0x80,0x80);
+
+    pwm_set_output_polarity(PWMslice,true,false);
+
+    pwm_set_wrap (PWMslice, 256);
+    pwm_set_enabled(PWMslice,true);
+
+}
+
+
+void SetA2D(void){
+    adc_init();
+    gpio_set_dir(Mike,GPIO_IN);
+    adc_gpio_init(Mike);
+    adc_select_input(MikeADC);
+}
+
+
+void AddToMikeBuffer(uint8_t v){
+    MikeBuffer[MikeIn]=v;
+    MikeIn++;
+    if (MikeIn==SoundBuffMax){
+          MikeIn=0;
+    }
+}
+
+void AddToSpkBuffer(uint8_t v){
+    SpkBuffer[SpkIn]=v;
+    SpkIn++;
+    if (SpkIn==SoundBuffMax){
+          SpkIn=0;
+    }
+}
+
+uint8_t GetFromSpkBuffer(void){
+    uint8_t c=0;
+    if(SpkIn!=SpkOut){
+        c=SpkBuffer[SpkOut];
+        SpkOut++;
+        if (SpkOut==SoundBuffMax){
+            SpkOut=0;
+        }
+    }
+    return c;
+}
+/*
+uint8_t GetFromMikeBuffer(void){
+    uint8_t c=0;
+    if(MikeIn!=MikeOut){
+        c=MikeBuffer[MikeOut];
+        MikeOut++;
+        if (MikeOut==SoundBuffMax){
+            MikeOut=0;
+        }
+    }
+    return c;
+}
+*/
+
+//sample mikrophone and output buffer to pwm every 125uS
+bool Sound_Timer_Callback(struct repeating_timer *t){
+    uint16_t a;
+    //get a2d into mike buffer
+    a=adc_read();
+    busy_wait_us(AUDIOFILTER);
+    a=a+adc_read();
+    busy_wait_us(AUDIOFILTER);
+    a=a+adc_read();
+    busy_wait_us(AUDIOFILTER
+    );
+    a=a+adc_read();
+    a=a>>6; //scales from 4*4096 to 256
+    
+    if (loopback_audio==0){
+        AddToMikeBuffer(a);   
+        a=GetFromSpkBuffer();
+    }
+     
+    pwm_set_both_levels(PWMslice,a,a);
+   
+    if (MikeIn==SoundPacket+1){
+        SendSound=1;
+        MikeIn=1;
+        MikeBuffer[0]=255;
+   
+       if (receiving>1)receiving--;
+
+    }
+   
+   
+    return 1; // make repeating
+}
+
+
+void init_sound(void){
+    SetPWM();
+    SetA2D();
+    MikeIn=1;
+    MikeBuffer[0]=255;    
+    //start 125uS interrupt
+//    add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
+    printf("Sound INIT\n");
+}
+
+
+int main() {
+	stdio_init_all();
+	init_sound();
+	// Wait some time for USB serial connection
+	sleep_ms(3000);
+
+	printf("**************** STARTING Core 0 **************** \n\n");
+        printf("Getting settings\n");
+        get_settings();
+        printf("Got settings\n");
+	
+	//Start Core1
+	multicore_reset_core1(); 
+        multicore_launch_core1(Core1Main);
+        printf("\n#Core 1 Started#\n\n");
+		
+//	const uint LED_PIN = GPIO_LED_PIN;
+//	gpio_init(LED_PIN);
+//	gpio_set_dir(LED_PIN, GPIO_OUT);
+
+//        printf("Waiting Forever...\n");
+//        while(1);
+        
+	//camera init
+	i2c_init(CAMERA_I2C, 100000);
+	gpio_set_function(CAMERA_SDA, GPIO_FUNC_I2C);
+	gpio_set_function(CAMERA_SCL, GPIO_FUNC_I2C);
+	gpio_pull_up(CAMERA_SDA);
+	gpio_pull_up(CAMERA_SCL);
+
+	struct camera camera;
+	struct camera_platform_config platform = {
+		.i2c_write_blocking = __i2c_write_blocking,
+		.i2c_read_blocking = __i2c_read_blocking,
+		.i2c_handle = CAMERA_I2C,
+
+		.pio = CAMERA_PIO,
+		.xclk_pin = CAMERA_XCLK_PIN,
+		.xclk_divider = 9,
+		.base_pin = CAMERA_BASE_PIN,
+		.base_dma_channel = -1,
+	};
+
+        printf("Camera Init \n");
+        sleep_ms(100);
+
+	int ret = camera_init(&camera, &platform);
+	if (ret) {
+		printf("camera_init failed: %d\n", ret);
+		return 1;
+	}else{
+	   printf("Camera_init complete\n");
+	}
+
+	sleep_ms(100);
+
+	LCD_initDisplay();
+	LCD_setRotation(3);
+	ClearScreen();
+	TestScreen();
+
+        if (SDStatus<3){
+           SDErrorScreen();        
+        
+        }
+
+
+
+//	const uint16_t camera_width = CAMERA_WIDTH_DIV8;
+//	const uint16_t camera_height = CAMERA_HEIGHT_DIV8;
+	const uint16_t camera_width = CAMERA_WIDTH_DIV2;
+	const uint16_t camera_height = CAMERA_HEIGHT_DIV2;
+
+//	struct camera_buffer *buf = camera_buffer_alloc(FORMAT_YUV422, camera_width, camera_height);
+	struct camera_buffer *buf = camera_buffer_alloc(FORMAT_RGB565, camera_width, camera_height);
+	assert(buf);
+
+	printf("Camera %i,%i Display %i,%i Strided %i \n",camera_width,camera_height,display_width,display_height,buf->strides[0]);
+
+	uint16_t v;
+	
+	char mag[display_width*2+1];
+
+	int loops=0;
+        uint16_t xoff=(camera_width-display_width)/2; //centre display to camera rasta
+        uint16_t msglength=display_width*2+1;
+
+        if (loopback_audio==1)printf("Loopback-Audio\n");
+        if (loopback_video==1)printf("Loopback-Video\n");
+        
+
+        printf("Waiting for IP address\n");
+
+	while (1) {
+//		gpio_put(LED_PIN, 1);
+//                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+		//wait till camers DMA has done before starting another.		
+		wait_for_camera_finished(&camera);
+//		sleep_ms(1);
+		ret = camera_capture_blocking(&camera, buf, true);
+//		ret = camera_capture_nonblocking(&camera, buf, true);
+//		gpio_put(LED_PIN, 0);
+//                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+		if (ret != 0) {
+			printf("Capture error: %d\n", ret);
+		} else {
+			uint16_t  y, x;
+			uint32_t yoff;
+		        char msg[display_width*2+1];
+			for (y = 0; y < display_height; y++) {
+			        yoff=buf->strides[0] * y;
+/*
+                                // write it a pixel at a time
+				for (x = 0; x < display_width; x++) {
+					uint32_t a = x>>1 + yoff   ;
+					
+					v = buf->data[0][a]*256+buf->data[0][a+1];
+					LCD_WritePixel(x,y, v );
+
+				}
+*/
+
+                                msg[0]=(uint8_t)y;
+                                for (x = 0; x < display_width*2; x++) {
+                                    msg[x+1]=buf->data[0][yoff+xoff+x];
+                                
+                                }
+                                send_udp_blocking(msg, msglength);
+                                                                
+// local echo 
+                                if (loopback_video==1){
+//           			    LCD_WriteLineFromBuff8(1,y,&buf->data[0][yoff+xoff],display_width,0);
+                       		    LCD_WriteLineFromBuff8(1,y,&msg[1],display_width,0);   
+                                }//if
+			}//for
+		}//else
+            tight_loop_contents();
+            
+            if(receiving==1){
+              receiving=0;
+              NoSigScreen();
+            }//if 
+	}//while
+
+}
+
