@@ -40,6 +40,8 @@ Add better amp for Microphone
 
 Add Support for JogWheel for destination selection/modes
 
+Add ring and connect tones
+
 # The current Farnsworth Project - Artifact Creation.
 
 ![2a2deadc2fc2ff37](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/86b3b2e3-a4dd-43d1-9928-bf8416e8bee0)
