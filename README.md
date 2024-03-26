@@ -49,6 +49,9 @@ Add ring and connect tones
 
 # The current Farnsworth Project - Artifact Creation.
 
+## Security 
+WARNING, THERE IS NONE. Everything you do and say is transmitted in the raw to the internet. NO Passwords, NO Encryption. YOU HAVE BEEN WARNED
+
 ![2a2deadc2fc2ff37](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/86b3b2e3-a4dd-43d1-9928-bf8416e8bee0)
 
 
