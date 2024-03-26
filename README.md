@@ -24,6 +24,11 @@ SD card slot for programming/storage uses FatFS and an ini file parced by inipar
 ## USB Serial 
 USB serial has debug output
 
+## UDP Repeater (Strowger server)
+Strowger.py is a simple UDP repeater that allows two Farnsworths to connect on a "Channel". This means that both the farnsworths can use the same destination address (the Strowger server's) 
+
+It also enables the possibity of dialing other users on the same server (not yet implimented) 
+
 # Current Project State
   Working, with issues, see ToDo
 
