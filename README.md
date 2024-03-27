@@ -57,3 +57,7 @@ WARNING, THERE IS NONE. Everything you do and say is transmitted in the raw to t
 
 ![c6f870eb24ed178d](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/91131192-dc36-4a74-999a-d2169781ccfb)
 
+## Other usefull code 
+Gimp to RGB565 array in C https://github.com/MrPozor/gimp_export565array/blob/master/export565array.py
+
+
