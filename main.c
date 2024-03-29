@@ -18,9 +18,7 @@
 #include "hardware/adc.h"
 
 //wifi stuff
-
 #include "lwipopts.h"
-
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
 
@@ -33,6 +31,7 @@
 #include "gc9a01/gc9a01.h"
 #include "gc9a01/gc9a01.c"
 #include "screen.c"
+#include "graphics/graphics.h"
 
 #define USE_DMA 1
 
@@ -69,6 +68,8 @@ struct repeating_timer stimer;
 uint8_t MikeBuffer[SoundBuffMax];
 uint16_t MikeIn=0;
 uint16_t MikeOut=0;
+//sound counter
+int sc=0;
 
 volatile uint8_t SpkBuffer[SoundBuffMax];
 volatile uint16_t SpkIn=0;
@@ -77,8 +78,11 @@ volatile uint16_t SpkOut=0;
 void AddToSpkBuffer(uint8_t v);
 bool Sound_Timer_Callback(struct repeating_timer *t);
 
-//wifi
+//RotaryEncoder
+#include "rotenc.h"
 
+
+//wifi
 extern const char * s_wifi_ssid;
 extern const char * s_wifi_pass;
 
@@ -86,8 +90,11 @@ extern const char * s_wifi_pass;
 extern int loopback_audio;
 extern int loopback_video;
 
-//ip
+//destination
+extern int dest_channel[]; 
+uint8_t dest=0; //
 
+//ip
 struct udp_pcb* pcb ;
 ip_addr_t target_addr;
 ip_addr_t my_addr;
@@ -103,6 +110,11 @@ volatile uint8_t p_buffer [600];
 
 volatile uint8_t receiving=0;
 
+
+//screen
+void IPScreen(void);
+
+//******************************* Networky Stuff ************************
 
 static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p, const ip_addr_t *_addr, uint16_t _port) {
     char *_pData = (char *)_p->payload;
@@ -125,7 +137,7 @@ static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p,
         }
     }
 
-    if(receiving<100)receiving=100;
+    if(receiving<100)receiving=100; //receiving 
     pbuf_free(_p); // don't forget to release the buffer!!!!
 }
 
@@ -134,7 +146,7 @@ void init_udp(){
     err_t er;
 
     //setup udp TX
-    ipaddr_aton(dest_addr, &target_addr);
+    ipaddr_aton(dest_addr[dest], &target_addr);
     pcb = udp_new();
     er=udp_bind(pcb, IP_ADDR_ANY, LOCAL_PORT);
     if (er != ERR_OK) {
@@ -151,7 +163,7 @@ void send_udp(char* msg,int msglen){
         int a;
         for(a=0;a<msglen;a++) req[a]=msg[a];
         req[a]=0;
-        err_t er = udp_sendto(pcb, p, &target_addr, dest_port);
+        err_t er = udp_sendto(pcb, p, &target_addr, dest_port[dest]);
         pbuf_free(p);
         if (er != ERR_OK) {
             printf("Failed to send UDP packet! error=%d", er);
@@ -171,6 +183,40 @@ void send_udp_blocking(char* msg,int msglen){
 }
 
 
+void init_network(){
+        if (cyw43_arch_init()) {
+            printf("cyw43 failed to initialise\n");
+            while(1);
+        }
+        cyw43_arch_enable_sta_mode();
+  
+
+        printf("Connecting to Wi-Fi...\n");
+        int x=1;
+        while(x){
+            x=cyw43_arch_wifi_connect_timeout_ms(s_wifi_ssid, s_wifi_pass, CYW43_AUTH_WPA2_AES_PSK, 30000);
+            if (x) {
+                printf("trying. \n");
+                sleep_ms(500);
+            } else {
+                printf("\n\n************ Connected **************\n\n");
+                printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),LOCAL_PORT,dest_addr[dest],dest_port[dest] );
+                printf("*************************************\n\n");
+            }
+        }
+
+        printf("\nWiFi Ready...\n");
+        IPScreen();
+        init_udp();
+        online=1;
+
+
+
+}
+
+
+//*************************** I2C INIT ******************************
+
 static inline int __i2c_write_blocking(void *i2c_handle, uint8_t addr, const uint8_t *src, size_t len)
 {
 	return i2c_write_blocking((i2c_inst_t *)i2c_handle, addr, src, len, false);
@@ -180,6 +226,8 @@ static inline int __i2c_read_blocking(void *i2c_handle, uint8_t addr, uint8_t *d
 {
 	return i2c_read_blocking((i2c_inst_t *)i2c_handle, addr, dst, len, false);
 }
+
+//************************ Display Stuff *******************************
 
 void ClearScreen(void){
    LCD_WriteRectangle( 0, 0,display_width,display_height, BLACK);
@@ -203,97 +251,69 @@ void TestScreen(void){
    LCD_WritePixel(122,122,BLUE);
    LCD_WritePixel(120,122,RED);
    
-//  drawch('X',WHITE,BLACK,120,120);   
 }
 
 void SDErrorScreen(void){
-//  ClearScreen();
-  printf("SD Error\n");
-  
+  printf("SD Error\n");  
   ClearScreen();
   char temp[250];
   if (SDStatus==1) sprintf(temp,"No SD Card");
-  if (SDStatus==2) sprintf(temp,"Inifile read error ");
-  drawtext90(100, 20, temp, WHITE, BLACK);
-  printf("\nHalted\n");
+  if (SDStatus==2) sprintf(temp,"INI file read error ");
+  drawtext90centred(100, temp, WHITE, BLACK);
+  printf("\nHalted SD Error\n");
   while(1);
 }
 
-void IPScreen(void){
-  printf("ip screen\n");
-  ClearScreen();
-  char temp[250];
-  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
-  drawtext90(100, 20, temp, WHITE, BLACK);
 
+int64_t prn;
+
+//truely awfull psudo random generator , but ok for noise on screen display 
+int16_t psudorand(void){
+  prn = prn * 1103515243 + 12345;
+  return (uint16_t)(prn >> 15) & 0xffff;
 }
 
 void NoSigScreen(void){
   printf("No Sig\n");
-//  TestScreen();
   ClearScreen();
-  int c=0;
-  for(int y=0;y<240;y=y+6){
-      for(int x=0;x<230;x+=10){
-         if(c==0){c=3;}else{c=0;}
-         LCD_Fast_Vline(y+c,x,10,WHITE);
-      }
-  }      
+  
+  prn=MikeBuffer[0]+MikeBuffer[1]+1;
+
+  uint16_t n;
+  for(int y=0;y<240;y+=3){
+     for(int x=0;x<240;x+=3){     
+       n=psudorand();
+       LCD_WritePixel(x,y,n);
+     }
+  }
+  
   char temp[250];
+  sprintf(temp,"-- NO SIGNAL --");
+  drawtext90centred(70, temp, RED, BLACK);
+//  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
+//  drawtext90centred(110, temp, WHITE, BLACK);
+
   sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
-  drawtext90(100, 20, temp, WHITE, BLACK);
-}
+  drawtext90centred(120, temp, WHITE, BLACK);
+  sprintf(temp,"Destination %s",dest_addr[dest]);
+  drawtext90centred(110, temp, WHITE, BLACK);
+  sprintf(temp,"Channel %i",dest_channel[dest]);
+  drawtext90centred(100,  temp, WHITE, BLACK); 
+  sprintf(temp,"Destination %i",dest);
+  drawtext90centred(90,  temp, WHITE, BLACK);
 
-uint8_t reverse(uint8_t b) {
-   b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
-   b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
-   b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-   return b;
-}
-
-void Core1Main(void){
-     if (cyw43_arch_init()) {
-            printf("cyw43 failed to initialise\n");
-            while(1);
-        }
-        cyw43_arch_enable_sta_mode();
-
-	
-	printf("**************** STARTING Core 1 **************** \n\n");
-
-        printf("Connecting to Wi-Fi...\n");
-        int x=1;
-        while(x){
-            x=cyw43_arch_wifi_connect_timeout_ms(s_wifi_ssid, s_wifi_pass, CYW43_AUTH_WPA2_AES_PSK, 30000);
-            if (x) {
-                printf("trying. \n");
-                sleep_ms(500);
-            } else {
-                printf("\n\n************ Connected **************\n\n");
-                printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),LOCAL_PORT,dest_addr,dest_port );
-                printf("*************************************\n\n");
-            }
-        }
-
-        printf("\nWiFi Ready...\n");
-        IPScreen();
-        init_udp();
-        online=1;
-
-        printf("Core 1 start audio interrupt\n");
-        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
-        
-        while(1){
-           tight_loop_contents(); 
-           
-           if (SendSound==1){
-               send_udp_blocking(MikeBuffer, SoundPacket+1);
-               SendSound=0;
-           }
-        }
-          
 
 }
+
+void IPScreen(void){
+  printf("ip screen\n");
+//  ClearScreen();
+//  char temp[250];
+  NoSigScreen();
+}
+
+
+//******************************* Sound Stuff *****************************
 
 void SetPWM(void){
     gpio_init(soundIO1);
@@ -365,6 +385,7 @@ uint8_t GetFromMikeBuffer(void){
 }
 */
 
+
 //sample mikrophone and output buffer to pwm every 125uS
 bool Sound_Timer_Callback(struct repeating_timer *t){
     uint16_t a;
@@ -392,10 +413,8 @@ bool Sound_Timer_Callback(struct repeating_timer *t){
         MikeBuffer[0]=255;
    
        if (receiving>1)receiving--;
-
     }
-   
-   
+      
     return 1; // make repeating
 }
 
@@ -410,6 +429,62 @@ void init_sound(void){
     printf("Sound INIT\n");
 }
 
+void send_sound(void){
+   if (SendSound==1){
+       char temp[3];
+       send_udp_blocking(MikeBuffer, SoundPacket+1);
+       SendSound=0;
+       sc++;
+       if(sc>100){
+           //send channel info every so often
+           sc=0;
+           temp[0]=253;
+           temp[1]=dest_channel[dest];
+           send_udp_blocking(temp, 2);
+       }  
+    }
+
+
+}
+
+
+// ***************************** LED *********************
+void PCB_LED(int x){
+      //gpio_put(LED_PIN, x);
+      cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, x);
+  
+  }
+
+
+
+// ************************** Jog wheel move ******************
+//called from rotenc on jog change
+void JogChange(uint8_t jog){
+        printf("Jog:%i\n",jog);
+        dest=jog;
+        receiving=50; //channel changed, we are no longer receiving, delay until no sifg screen
+        DisplayDigit(jog,WHITE,Red,BLACK );
+        
+}
+
+
+
+// ******************************* CORE 1 *************************************
+
+void Core1Main(void){
+
+        printf("Core 1 start audio interrupt\n");
+        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
+
+        RotEncSetup();
+        
+        while(1){
+           tight_loop_contents(); 
+        }
+}
+
+
+// ******************************* MAIN **********************
 
 int main() {
 	stdio_init_all();
@@ -421,11 +496,22 @@ int main() {
         printf("Getting settings\n");
         get_settings();
         printf("Got settings\n");
-	
+
+        //init screen
+	LCD_initDisplay();
+	LCD_setRotation(3);
+	ClearScreen();
+	TestScreen();
+
+        //init WiFi and UDP
+        init_network();  
+        
 	//Start Core1
 	multicore_reset_core1(); 
         multicore_launch_core1(Core1Main);
         printf("\n#Core 1 Started#\n\n");
+
+
 		
 //	const uint LED_PIN = GPIO_LED_PIN;
 //	gpio_init(LED_PIN);
@@ -467,24 +553,14 @@ int main() {
 
 	sleep_ms(100);
 
-	LCD_initDisplay();
-	LCD_setRotation(3);
-	ClearScreen();
-	TestScreen();
-
         if (SDStatus<3){
            SDErrorScreen();        
         
         }
 
-
-
-//	const uint16_t camera_width = CAMERA_WIDTH_DIV8;
-//	const uint16_t camera_height = CAMERA_HEIGHT_DIV8;
 	const uint16_t camera_width = CAMERA_WIDTH_DIV2;
 	const uint16_t camera_height = CAMERA_HEIGHT_DIV2;
 
-//	struct camera_buffer *buf = camera_buffer_alloc(FORMAT_YUV422, camera_width, camera_height);
 	struct camera_buffer *buf = camera_buffer_alloc(FORMAT_RGB565, camera_width, camera_height);
 	assert(buf);
 
@@ -501,19 +577,17 @@ int main() {
         if (loopback_audio==1)printf("Loopback-Audio\n");
         if (loopback_video==1)printf("Loopback-Video\n");
         
-
-        printf("Waiting for IP address\n");
-
 	while (1) {
-//		gpio_put(LED_PIN, 1);
-//                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-		//wait till camers DMA has done before starting another.		
-		wait_for_camera_finished(&camera);
-//		sleep_ms(1);
+
+		//wait till camera DMA has done before starting another.		
+		while(is_camera_busy(&camera)) {
+                    send_sound();    
+                }
+
+//		wait_for_camera_finished(&camera);
+
 		ret = camera_capture_blocking(&camera, buf, true);
-//		ret = camera_capture_nonblocking(&camera, buf, true);
-//		gpio_put(LED_PIN, 0);
-//                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+
 		if (ret != 0) {
 			printf("Capture error: %d\n", ret);
 		} else {
@@ -522,16 +596,6 @@ int main() {
 		        char msg[display_width*2+1];
 			for (y = 0; y < display_height; y++) {
 			        yoff=buf->strides[0] * y;
-/*
-                                // write it a pixel at a time
-				for (x = 0; x < display_width; x++) {
-					uint32_t a = x>>1 + yoff   ;
-					
-					v = buf->data[0][a]*256+buf->data[0][a+1];
-					LCD_WritePixel(x,y, v );
-
-				}
-*/
 
                                 msg[0]=(uint8_t)y;
                                 for (x = 0; x < display_width*2; x++) {
@@ -539,6 +603,8 @@ int main() {
                                 
                                 }
                                 send_udp_blocking(msg, msglength);
+                                //interleave sound if needed
+                                send_sound();
                                                                 
 // local echo 
                                 if (loopback_video==1){
@@ -549,10 +615,13 @@ int main() {
 		}//else
             tight_loop_contents();
             
+            // if receiving down to 1 set NoSig Screen
             if(receiving==1){
               receiving=0;
               NoSigScreen();
             }//if 
+
+
 	}//while
 
 }

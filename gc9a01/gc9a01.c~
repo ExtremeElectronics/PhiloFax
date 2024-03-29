@@ -266,20 +266,21 @@ void LCD_setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h)
 }
 
 void LCD_WriteBitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t *bitmap)
-{//had problems not tested
+{//needs doing
 	GC9A01_Select();
 	LCD_setAddrWindow(x, y, w, h); // Clipped area
 	GC9A01_RegData();
 //	spi_set_format(gc9a01_spi, 16, SPI_CPOL_1, SPI_CPOL_1, SPI_MSB_FIRST);
-#ifdef USE_DMA
-	dma_channel_configure(dma_lcd, &dma_cfg, &spi_get_hw(gc9a01_spi)->dr, // write address
-  	     bitmap,						// read address
-  	     w * h,						// element count (each element is of size transfer_data_size)
-  	     true);						// start asap
-	LCD_waitForDMA();
-#else
+//#ifdef USE_DMA
+//	dma_channel_configure(dma_lcd, &dma_cfg, &spi_get_hw(gc9a01_spi)->dr, // write address
+//						  bitmap,						// read address
+//						  w * h,						// element count (each element is of size transfer_data_size)
+//						  true);						// start asap
+//	LCD_waitForDMA();
+//#else
+
 	spi_write_blocking(gc9a01_spi, bitmap, w * h*2);
-#endif
+//#endif
 
 	GC9A01_DeSelect();
 }
@@ -300,6 +301,7 @@ void LCD_WriteLineFromBuff8(uint16_t  x, uint16_t y,uint8_t *buff, uint16_t leng
 
         if (nowait!=1){                                                  
             LCD_waitForDMA();
+            //We have finished, deassert select, if dma is still running (no wait), not our problem.
             GC9A01_DeSelect();
         }
 #else

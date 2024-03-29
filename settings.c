@@ -4,11 +4,12 @@
 
 #include "settings.h"
 
-#define WIFI_SSID "SSIDNAME"
+#define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "WIFIPASSWORD"
 #define DESTINATION_ADDR "10.42.42.35"
 #define DESTINATION_PORT 5055
 #define LOCAL_PORT 5055
+#define MAXDESTS 10
 
 
 //iniparcer
@@ -32,10 +33,12 @@ int loopback_audio=0;
 int loopback_video=0;
 
 int SDStatus=0; // 0 no sd, 1 sd detected, 2 read ini
-
-const char * dest_addr = DESTINATION_ADDR ;
-int dest_port = DESTINATION_PORT ; 
 int local_port = LOCAL_PORT ;
+int maxdestinations =0;
+
+const char *dest_addr[MAXDESTS]; // = DESTINATION_ADDR ;
+int dest_port[MAXDESTS]; // = DESTINATION_PORT ; 
+int dest_channel[MAXDESTS];// =0;
 
 int SDFileExists(char * filename){
     FRESULT fr;
@@ -71,9 +74,10 @@ void ini_file_parse(FRESULT fr){
         int overclock;
         int jpc;
         int iscf=0;
+        int d;
 
         ini_name = "farnsworth.ini";
-
+        char dname[100]; 
 
         if (SDFileExists(ini_name)){
           printf("Ini file %s Exists Loading ... \n\r",ini_name);
@@ -85,16 +89,30 @@ void ini_file_parse(FRESULT fr){
           s_wifi_pass = iniparser_getstring(ini, "WIFI:pass",WIFI_PASSWORD );
           s_wifi_ssid = iniparser_getstring(ini, "WIFI:ssid",WIFI_SSID );
 
-          dest_addr = iniparser_getstring(ini, "DESTINATION:dest",DESTINATION_ADDR);
-          dest_port = iniparser_getint(ini, "DESTINATION:port",DESTINATION_PORT );
-
-          local_port = iniparser_getint(ini, "DESTINATION:port",LOCAL_PORT );
-
           loopback_audio = iniparser_getint(ini, "TEST:loopback_audio",0 );
           loopback_video = iniparser_getint(ini, "TEST:loopback_video",0 );
 
+          local_port = iniparser_getint(ini, "LOCAL:port",LOCAL_PORT );
 
+          maxdestinations = iniparser_getint(ini, "SELECTION:maxdestinations",0 );
+          
+          printf("Max Destinations %i \n",maxdestinations);
 
+          for(d=0;d<maxdestinations;d++){
+
+            sprintf(dname,"DESTINATION%i:address",d);
+            dest_addr[d] = iniparser_getstring(ini, dname,DESTINATION_ADDR);
+            
+            sprintf(dname,"DESTINATION%i:port",d);
+            dest_port[d] = iniparser_getint(ini, dname,DESTINATION_PORT );
+
+            sprintf(dname,"DESTINATION%i:channel",d);
+            dest_channel[d] = iniparser_getint(ini, dname,0 );
+
+            printf("%i -> %s:%i ch:%i \n",d,dest_addr[d],dest_port[d],dest_channel[d]);
+
+          }
+          
    
          printf("Loaded INI\n\r");
          SDStatus=3;

@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.18)
+project(test_project C CXX ASM)
+set(PICO_BOARD pico_w)
+
+project(Graphics)
+
+add_library(Graphics INTERFACE)
+
+target_include_directories(Graphics INTERFACE
+        ${CMAKE_CURRENT_LIST_DIR}/include
+)
+
+target_sources(camera INTERFACE
+        ${CMAKE_CURRENT_LIST_DIR}/graphics.c
+)
+
+target_link_libraries(Graphics INTERFACE
+        hardware_dma
+        hardware_irq
+        hardware_pio
+        pico_multicore
+)
+

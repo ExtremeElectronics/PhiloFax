@@ -1,0 +1,137 @@
+#include <string.h>
+#include "font.h"
+#include "malloc.h"
+#include "stdarg.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include "font8x8.h"
+#include "gc9a01/gc9a01.h"
+#include "graphics.h"
+
+
+//graphics files
+//large digits
+#include "FarnsNumbers.c"
+//background
+#include "Farnsworth_b.c"
+
+#define PIXELSTOCENTRENUM 70
+
+/*
+enum ColorDefs	{
+		Black			= 0x0000,
+		White			= 0xFFFF,
+		BrightRed		= 0xF800,
+		BrightGreen		= 0x07E0,
+		BrightBlue		= 0x001F,
+		BrightCyan		= 0x07FF,
+		BrightMagenta		= 0xF81F,
+		Yellow			= 0xFFF0,
+		BrightYellow		= 0xFFE0,
+		LightYellow		= 0xFFF2,
+		Gold			= 0xFEA0,
+		Blue			= 0x0010,
+		Green			= 0x0400,
+		Cyan			= 0x0410,
+		Red			= 0x8000,
+		Magenta			= 0x8010,
+		Brown			= 0xFC00,
+		LightGray		= 0x8410,
+		DarkGray		= 0x4208,
+		LightBlue		= 0x841F,
+		LightGreen		= 0x87F0,
+		LightCyan		= 0x87FF,
+		LightRed		= 0xFC10,
+		LightMagenta		= 0xFC1F,
+		SaddleBrown		= 0x8A22,
+		Sienna			= 0xA285,
+		Peru			= 0xCC27,
+		Burlywood		= 0xDDD0,
+		Wheat			= 0xF7BB,
+		Tan			= 0xD5B1,
+		Orange			= 0xFDC9,
+		DarkOrange		= 0xFC60,
+		LightOrange		= 0xFE40,
+		Gray242			= 0xF79E,
+		Gray229			= 0xE73C,
+		Gray204			= 0xCE79,
+		Gray192			= 0xC618,
+		Gray160			= 0xA514,
+		Gray128			= 0x8410,
+		Gray96			= 0x630C,
+		Gray32			= 0x2104,
+		Gray10			= 0x0841
+};
+*/
+uint16_t SwapBinary(uint16_t v){
+    return(v >> 8) | (v << 8);
+}
+
+
+void DisplayDigitBackground(uint8_t * background,uint16_t fg,uint16_t bg ){
+   uint8_t x;
+   uint8_t y;
+   uint8_t d;
+   uint8_t v;
+   uint8_t b;
+   bg=SwapBinary(bg);
+   fg=SwapBinary(fg);
+   uint16_t buffer[240];
+   for(y=0;y<240;y++){
+     x=0;
+     for(d=0;d<30;d++){
+        v=background[d+y*30];
+        for(b=0;b<8;b++){
+            if(v & 1<<b){
+              buffer[x]=fg;
+            }else{
+              buffer[x]=bg;
+            }
+            x++;
+        }
+     }
+     //write line
+     LCD_WriteLineFromBuff8(0,y,buffer,240,0);
+  }
+}  
+
+void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg ){
+   DisplayDigitBackground(&Farnsworth_b[0], backgroundfg,bg);
+   uint8_t x;
+   uint8_t y;
+   uint8_t d;
+   uint8_t v;
+   uint8_t b;
+   uint16_t buffer[100];
+   for(y=0;y<100;y++){
+     x=0;
+     for(d=0;d<13;d++){
+        v=FarnsNums[digit][d+y*13];
+        for(b=0;b<8;b++){
+            if(v & 1<<b){
+              buffer[x]=digitfg;
+            }else{
+              buffer[x]=bg;
+            }
+            x++;
+        }      
+     }
+     //write line
+     LCD_WriteLineFromBuff8(PIXELSTOCENTRENUM,y+PIXELSTOCENTRENUM,buffer,100,0);
+  }
+  
+  
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+

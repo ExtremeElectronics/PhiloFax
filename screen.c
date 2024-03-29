@@ -151,3 +151,15 @@ void drawtext90(int16_t ax, int16_t ay, char * text, uint16_t fg, uint16_t bg){
    }
 
 }
+
+void drawtext90centred(int16_t ax, char * text, uint16_t fg, uint16_t bg){
+   //display 90 degrees so x and y are reversed
+   uint8_t ay;
+   ay=(display_width-(strlen(text)*size_x))/2;
+   drawtext90(ax, ay, text, fg, bg);
+
+}
+
+
+
+

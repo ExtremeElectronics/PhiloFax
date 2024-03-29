@@ -142,7 +142,7 @@ struct camera_buffer *camera_buffer_alloc(uint32_t format, uint16_t width, uint1
 void camera_buffer_free(struct camera_buffer *buf);
 
 void wait_for_camera_finished(struct camera *camera);
-int is_camera_busy(struct camera *camera);
+int is_camera_finished(struct camera *camera);
 
 #endif /* __CAMERA_H__ */
 

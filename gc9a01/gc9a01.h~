@@ -47,7 +47,6 @@
 #define GC9A01_RDID4   0xDD
 
 // Color definitions
-/*
 #define	BLACK   0x0000
 #define	BLUE    0x001F
 #define	RED     0xF800
@@ -57,7 +56,6 @@
 #define YELLOW  0xFFE0
 #define WHITE   0xFFFF
 #define GREY	0x7bef
-*/
 //from other driver
 
 #include "pico/stdlib.h"

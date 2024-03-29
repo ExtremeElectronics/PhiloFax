@@ -324,7 +324,7 @@ static uint8_t camera_pixels_per_chunk(uint32_t format)
 }
 
 
-int is_camera_busy(struct camera *camera){
+int is_camera_finished(struct camera *camera){
 	return camera->pending;
 }
 
