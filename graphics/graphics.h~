@@ -52,3 +52,11 @@ enum ColorDefs	{
 		Gray32			= 0x2104,
 		Gray10			= 0x0841
 };
+
+uint16_t SwapBinary(uint16_t v);
+
+
+void DisplayDigitBackground(uint8_t * background,uint16_t fg,uint16_t bg );
+
+void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg );
+

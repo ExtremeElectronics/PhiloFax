@@ -1,7 +1,7 @@
 /**
  * Farnsworth - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>	
  *
- * Camre Code - Copyright (c) 2022 Brian Starkey <stark3y@gmail.com>
+ * Camera Code - Copyright (c) 2022 Brian Starkey <stark3y@gmail.com>
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -30,13 +30,21 @@
 //display driver
 #include "gc9a01/gc9a01.h"
 #include "gc9a01/gc9a01.c"
-#include "screen.c"
+//#include "screen.c"
 #include "graphics/graphics.h"
 
 #define USE_DMA 1
 
 //defaults and sdcard reader/parcer
-#include "settings.c"
+#include "settings.h"
+extern int SDStatus; // 0 no sd, 1 sd detected, 2 read ini
+extern int local_port;
+extern int maxdestinations;
+extern const char *dest_addr[MAXDESTS]; // = DESTINATION_ADDR ;
+extern int dest_port[MAXDESTS]; // = DESTINATION_PORT ;
+extern int dest_channel[MAXDESTS];// =0;
+
+
 
 #define CAMERA_PIO      pio0
 #define CAMERA_BASE_PIN 16
@@ -49,34 +57,9 @@
 
 
 //sound
-//must be pins on the same slice
-#define soundIO1 8
-#define soundIO2 9
-#define PWMrate 90
-#define Mike 28 //gpio pin
-#define MikeADC 2 //adc channel
+#include "sound/sound.h"
+extern uint16_t ftextpos;
 
-#define AUDIOFILTER 6 // delay between consecutive samples of noise max 15 smaller more noise
-
-uint PWMslice;
-struct repeating_timer stimer;
-
-#define SoundBuffMax 1024
-#define SoundPacket 100 //must be less than SoundBuffMax-1
-
-//sound buffers
-uint8_t MikeBuffer[SoundBuffMax];
-uint16_t MikeIn=0;
-uint16_t MikeOut=0;
-//sound counter
-int sc=0;
-
-volatile uint8_t SpkBuffer[SoundBuffMax];
-volatile uint16_t SpkIn=0;
-volatile uint16_t SpkOut=0;
-
-void AddToSpkBuffer(uint8_t v);
-bool Sound_Timer_Callback(struct repeating_timer *t);
 
 //RotaryEncoder
 #include "rotenc.h"
@@ -114,6 +97,9 @@ volatile uint8_t receiving=0;
 //screen
 void IPScreen(void);
 
+
+extern uint16_t fringpos;
+
 //******************************* Networky Stuff ************************
 
 static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p, const ip_addr_t *_addr, uint16_t _port) {
@@ -137,7 +123,10 @@ static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p,
         }
     }
 
-    if(receiving<100)receiving=100; //receiving 
+    if(receiving<100){
+       if(receiving<3)fringpos=1;
+       receiving=100; //receiving
+    } 
     pbuf_free(_p); // don't forget to release the buffer!!!!
 }
 
@@ -202,6 +191,8 @@ void init_network(){
                 printf("\n\n************ Connected **************\n\n");
                 printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),LOCAL_PORT,dest_addr[dest],dest_port[dest] );
                 printf("*************************************\n\n");
+                ftextpos=1;
+
             }
         }
 
@@ -277,7 +268,8 @@ void NoSigScreen(void){
   printf("No Sig\n");
   ClearScreen();
   
-  prn=MikeBuffer[0]+MikeBuffer[1]+1;
+//  prn=MikeBuffer[0]+MikeBuffer[1]+1;
+  prn=1;
 
   uint16_t n;
   for(int y=0;y<240;y+=3){
@@ -312,7 +304,7 @@ void IPScreen(void){
   NoSigScreen();
 }
 
-
+/*
 //******************************* Sound Stuff *****************************
 
 void SetPWM(void){
@@ -341,6 +333,16 @@ void SetA2D(void){
     gpio_set_dir(Mike,GPIO_IN);
     adc_gpio_init(Mike);
     adc_select_input(MikeADC);
+}
+
+void ZeroMikeBiffer(void){
+   MikeIn=0;
+   MikeOut=0;
+}
+
+void ZeroSpkBuffer(void){
+   SpkIn=0;
+   SpkOut=0;
 }
 
 
@@ -383,7 +385,7 @@ uint8_t GetFromMikeBuffer(void){
     }
     return c;
 }
-*/
+
 
 
 //sample mikrophone and output buffer to pwm every 125uS
@@ -395,8 +397,7 @@ bool Sound_Timer_Callback(struct repeating_timer *t){
     a=a+adc_read();
     busy_wait_us(AUDIOFILTER);
     a=a+adc_read();
-    busy_wait_us(AUDIOFILTER
-    );
+    busy_wait_us(AUDIOFILTER);
     a=a+adc_read();
     a=a>>6; //scales from 4*4096 to 256
     
@@ -446,7 +447,7 @@ void send_sound(void){
 
 
 }
-
+*/
 
 // ***************************** LED *********************
 void PCB_LED(int x){
@@ -474,8 +475,8 @@ void JogChange(uint8_t jog){
 void Core1Main(void){
 
         printf("Core 1 start audio interrupt\n");
-        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
-
+//        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
+        StartSoundTimer();
         RotEncSetup();
         
         while(1){

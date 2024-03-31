@@ -29,7 +29,7 @@ struct repeating_timer etimer;
 
 extern uint8_t dest;
 
-extern JogChange(uint8_t jog);
+extern void JogChange(uint8_t jog);
 /*
 void JogChange(uint8_t jog){
 	printf("Jog:%i\n",jog);

@@ -60,3 +60,5 @@ void DisplayDigitBackground(uint8_t * background,uint16_t fg,uint16_t bg );
 
 void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg );
 
+void drawtext90centred(int16_t ax, char * text, uint16_t fg, uint16_t bg);
+

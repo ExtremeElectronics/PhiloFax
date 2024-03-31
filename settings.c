@@ -3,14 +3,14 @@
 // defaults from config.h
 
 #include "settings.h"
-
+/*
 #define WIFI_SSID "SSID"
 #define WIFI_PASSWORD "WIFIPASSWORD"
 #define DESTINATION_ADDR "10.42.42.35"
 #define DESTINATION_PORT 5055
 #define LOCAL_PORT 5055
 #define MAXDESTS 10
-
+*/
 
 //iniparcer
 #include "dictionary.h"
