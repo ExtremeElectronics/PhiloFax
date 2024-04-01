@@ -3,9 +3,13 @@ Farnsworth - Sound and audio over UDP for Pi PicoW - written in C
 
 ### Software to implement a Farnsworth (see Warehouse 13) using a Pi Picow, GC9A01 35mm circular display and a cheap OV7670 Camera
 
+![Screenshot 2024-04-01 153617](https://github.com/ExtremeElectronics/PhiloFax/assets/102665314/626be1fb-f8a3-4f3a-8ee3-27349b394f75)
+
 ## Camera
 The camera is implemented using a parallel to serial shift register to reduce the GPIO pin count on the Pico
 PIO's are used to de serialise the camera data. The Camera is fixed at 240x320 RGB565, Control is via i2c
+
+Thanks for Brian Sharkey (UsedBytes) for sharing his Camera code and serial circuit https://github.com/usedbytes/camera-pico-ov7670
 
 ## Display
 The display uses a GC9A01 35mm circular display module via SPI
