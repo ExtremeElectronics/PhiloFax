@@ -50,7 +50,8 @@ enum ColorDefs	{
 		Gray128			= 0x8410,
 		Gray96			= 0x630C,
 		Gray32			= 0x2104,
-		Gray10			= 0x0841
+		Gray10			= 0x0841,
+		Copper			= 0xfc4b
 };
 
 uint16_t SwapBinary(uint16_t v);
@@ -58,7 +59,9 @@ uint16_t SwapBinary(uint16_t v);
 
 void DisplayDigitBackground(uint8_t * background,uint16_t fg,uint16_t bg );
 
-void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg );
+void DisplayDigit(int digit, uint8_t type, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg );
 
 void drawtext90centred(int16_t ax, char * text, uint16_t fg, uint16_t bg);
+
+void ErrorBackground(uint16_t fg, uint16_t bg);
 

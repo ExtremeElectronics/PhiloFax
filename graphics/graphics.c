@@ -1,3 +1,14 @@
+/**
+ * Part of PhiloFax https://github.com/ExtremeElectronics/PhiloFax
+ *
+ * graphics.c
+ *
+ * Code to implement text and simple line drawings on gc9a01 - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>
+ * on a Pi PicoW
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <string.h>
 #include "font.h"
 #include "malloc.h"
@@ -25,9 +36,17 @@ extern uint16_t display_height;
 //large digits
 #include "FarnsNumbers.c"
 //background
-#include "Farnsworth_b.c"
+//#include "Farnsworth_b.c"
+#include "Farnsworth_b2.c"
+//wifi_background
+#include "Farnsworth_wfb.c"
+//error_background
+#include "Farnsworth_err.c"
 
 #define PIXELSTOCENTRENUM 70
+
+
+
 
 uint16_t SwapBinary(uint16_t v){
     return(v >> 8) | (v << 8);
@@ -59,16 +78,27 @@ void DisplayDigitBackground(uint8_t * background,uint16_t fg,uint16_t bg ){
      //write line
      LCD_WriteLineFromBuff8(0,y,buffer,240,0);
   }
+
 }  
 
-void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t bg ){
-   DisplayDigitBackground(&Farnsworth_b[0], backgroundfg,bg);
+
+void ErrorBackground(uint16_t fg, uint16_t bg){
+   DisplayDigitBackground(&Farnsworth_err[0], fg,bg);
+
+}
+
+void DisplayDigit(int digit,uint8_t type, uint16_t digitfg,  uint16_t backgroundfg, uint16_t bg ){
+//   DisplayDigitBackground(&Farnsworth_b2[0], backgroundfg,bg);
+   if(type==0)   DisplayDigitBackground(&Farnsworth_b2[0], bg,backgroundfg);
+   if(type==1)   DisplayDigitBackground(&Farnsworth_wfb[0], backgroundfg,bg);
    uint8_t x;
    uint8_t y;
    uint8_t d;
    uint8_t v;
    uint8_t b;
    uint16_t buffer[110];
+   digitfg=SwapBinary(digitfg);
+   bg=SwapBinary(bg);
    for(y=0;y<100;y++){
      x=0;
      for(d=0;d<13;d++){
@@ -85,8 +115,6 @@ void DisplayDigit(int digit, uint16_t digitfg, uint16_t backgroundfg, uint16_t b
      //write line
      LCD_WriteLineFromBuff8(PIXELSTOCENTRENUM,y+PIXELSTOCENTRENUM,buffer,100,0);
   }
-  
-  
   
 }
 
