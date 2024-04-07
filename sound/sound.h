@@ -1,6 +1,6 @@
 
-#define SoundBuffMax 1024
-#define SoundPacket 100 //must be less than SoundBuffMax-1
+#define SOUNDBUFFMAX 1024 // Size of sound buffers
+#define SOUNDPACKET 100 //Size of a sound packet, must be less than SoundBuffMax-1
 uint8_t fring(uint8_t s_in);
 uint8_t ftext(uint8_t s_in);
 void SetPWM(void);

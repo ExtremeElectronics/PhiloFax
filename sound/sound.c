@@ -1,9 +1,19 @@
+/**
+ * Part of PhiloFax https://github.com/ExtremeElectronics/PhiloFax
+ *
+ * sound.c
+ *
+ * Code to implement sound features - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>
+ * on a Pi PicoW
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <string.h>
 #include "malloc.h"
 #include "stdarg.h"
 #include <stdio.h>
 #include <stdlib.h>
-
 
 //pico stuff
 #include "pico/cyw43_arch.h"
@@ -18,19 +28,17 @@
 
 #include "settings.h"
 
-
 //void ZeroSpkBuffer(void);
 //void AddToSpkBuffer(uint8_t v);
 
 //sound buffers
-uint8_t MikeBuffer[SoundBuffMax];
+uint8_t MikeBuffer[SOUNDBUFFMAX];
 uint16_t MikeIn=0;
 uint16_t MikeOut=0;
 
-volatile uint8_t SpkBuffer[SoundBuffMax];
+volatile uint8_t SpkBuffer[SOUNDBUFFMAX];
 volatile uint16_t SpkIn=0;
 volatile uint16_t SpkOut=0;
-
 
 //sound counter
 int sc=0;
@@ -53,7 +61,6 @@ extern volatile uint8_t receiving;
 #define MikeADC 2 //adc channel
 
 #define AUDIOFILTER 6 // delay between consecutive samples of noise max 15 smaller more noise
-
 
 uint PWMslice;
 struct repeating_timer stimer;
@@ -92,7 +99,6 @@ uint8_t ftext(uint8_t s_in){
     }
 }
 
-
 void SetPWM(void){
     gpio_init(soundIO1);
     gpio_set_dir(soundIO1,GPIO_OUT);
@@ -112,7 +118,6 @@ void SetPWM(void){
     pwm_set_enabled(PWMslice,true);
 
 }
-
 
 void SetA2D(void){
     adc_init();
@@ -134,7 +139,7 @@ void ZeroSpkBuffer(void){
 void AddToSpkBuffer(uint8_t v){
     SpkBuffer[SpkIn]=v;
     SpkIn++;
-    if (SpkIn==SoundBuffMax){
+    if (SpkIn==SOUNDBUFFMAX){
           SpkIn=0;
     }
 }
@@ -144,7 +149,7 @@ uint8_t GetFromSpkBuffer(void){
     if(SpkIn!=SpkOut){
         c=SpkBuffer[SpkOut];
         SpkOut++;
-        if (SpkOut==SoundBuffMax){
+        if (SpkOut==SOUNDBUFFMAX){
             SpkOut=0;
         }
     }
@@ -167,7 +172,7 @@ uint8_t GetFromMikeBuffer(void){
 void AddToMikeBuffer(uint8_t v){
     MikeBuffer[MikeIn]=v;
     MikeIn++;
-    if (MikeIn==SoundBuffMax){
+    if (MikeIn==SOUNDBUFFMAX){
           MikeIn=0;
     }
 }
@@ -178,6 +183,7 @@ bool Sound_Timer_Callback(struct repeating_timer *t){
     uint16_t a;
     //get a2d into mike buffer
     a=adc_read();
+
     busy_wait_us(AUDIOFILTER);
     a=a+adc_read();
     busy_wait_us(AUDIOFILTER);
@@ -194,7 +200,7 @@ bool Sound_Timer_Callback(struct repeating_timer *t){
     a=ftext(a);
     pwm_set_both_levels(PWMslice,a,a);
 
-    if (MikeIn==SoundPacket+1){
+    if (MikeIn==SOUNDPACKET+1){
         SendSound=1;
         MikeIn=1;
         MikeBuffer[0]=255;
@@ -204,7 +210,6 @@ bool Sound_Timer_Callback(struct repeating_timer *t){
 
     return 1; // make repeating
 }
-
 
 void init_sound(void){
     SetPWM();
@@ -219,7 +224,7 @@ void init_sound(void){
 void send_sound(void){
    if (SendSound==1){
        char temp[3];
-       send_udp_blocking(MikeBuffer, SoundPacket+1);
+       send_udp_blocking(MikeBuffer, SOUNDPACKET+1);
        SendSound=0;
        sc++;
        if(sc>100){
