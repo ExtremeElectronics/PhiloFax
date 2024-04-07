@@ -1,3 +1,13 @@
+/**
+ * Part of PhiloFax https://github.com/ExtremeElectronics/PhiloFax
+ *
+ * rotenc.c
+ *
+ * Code to implement a Rotational Encoder - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>
+ * on a Pi PicoW
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 
 #include <stdio.h>
 #include "pico/stdlib.h"
@@ -23,20 +33,15 @@ uint8_t old_ta=0;
 uint8_t old_tb=0;
 
 uint8_t jog=0;
-uint8_t jogmax=10;
+//uint8_t jogmax=;
 
 struct repeating_timer etimer;
 
 extern uint8_t dest;
+extern uint8_t maxdestinations;
 
 extern void JogChange(uint8_t jog);
-/*
-void JogChange(uint8_t jog){
-	printf("Jog:%i\n",jog);
-	dest=jog;
-	DisplayDigit(jog,WHITE,Red,BLACK );
-}
-*/
+
 bool Encoder_Timer_Callback(uint gpio, uint32_t events) {
 	a=!gpio_get(ENC_A);
 	b=!gpio_get(ENC_B);	
@@ -49,14 +54,12 @@ bool Encoder_Timer_Callback(uint gpio, uint32_t events) {
 	if(b && !a && !old_b){tb=1;}
 	
 	if(!old_tb && ta){
-//	   printf("ccw\n");
 	   if (jog>0) jog--;
 	   JogChange(jog);
 	}
 	
 	if(!old_ta && tb){
-//	   printf("cw\n");
-	   if (jog<jogmax) jog++;
+	   if (jog<maxdestinations) jog++;
 	   JogChange(jog);
 	}
 		

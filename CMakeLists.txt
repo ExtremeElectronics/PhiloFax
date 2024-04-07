@@ -14,6 +14,7 @@ add_executable(Farnsworth
 		device_sdfs.c
 		dictionary.c
 		rotenc.c
+		settings.c
 )
 
 pico_enable_stdio_usb(Farnsworth 1)
@@ -25,6 +26,7 @@ target_include_directories(Farnsworth PRIVATE ${CMAKE_CURRENT_LIST_DIR} )
 target_link_libraries(Farnsworth
 	camera
 	graphics
+	sound
         pico_cyw43_arch_lwip_threadsafe_background
 	pico_lwip_mbedtls
 	pico_stdlib
@@ -35,11 +37,13 @@ target_link_libraries(Farnsworth
 	FatFs_SPI
 	hardware_adc
 	hardware_pwm
+	pico_rand
 )
 
 add_subdirectory(FatFs_SPI build)
 add_subdirectory(camera)
 add_subdirectory(graphics)
+add_subdirectory(sound)
 
 add_compile_definitions(PICO_STDIO_USB_ENABLE_RESET_VIA_BAUD_RATE=1)
 add_compile_definitions(PICO_STDIO_USB_ENABLE_RESET_VIA_VENDOR_INTERFACE=0)

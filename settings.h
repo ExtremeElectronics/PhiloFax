@@ -6,8 +6,8 @@
 #define DESTINATION_ADDR "10.42.42.35"
 #define DESTINATION_PORT 5055
 #define LOCAL_PORT 5055
-#define MAXDESTS 9
+#define MAXDESTS 10
+#define MAXWIFI 3
 
 
-
-void get_settings(void);
+int get_settings(void);

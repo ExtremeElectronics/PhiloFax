@@ -1,7 +1,10 @@
 /**
- * Farnsworth - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>	
+ * PhiloFax 
  *
- * Camera Code - Copyright (c) 2022 Brian Starkey <stark3y@gmail.com>
+ * Main.c
+ *
+ * Code to implement a Farnsworth - Copyright (c) 2024 Derek Woodroffe <tesla@extremeelectronics.co.uk>	
+ * on a Pi PicoW
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -16,6 +19,7 @@
 #include "pico/multicore.h"
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
+#include "pico/rand.h"
 
 //wifi stuff
 #include "lwipopts.h"
@@ -33,6 +37,8 @@
 //#include "screen.c"
 #include "graphics/graphics.h"
 
+#include "splash.c"
+
 #define USE_DMA 1
 
 //defaults and sdcard reader/parcer
@@ -40,11 +46,12 @@
 extern int SDStatus; // 0 no sd, 1 sd detected, 2 read ini
 extern int local_port;
 extern int maxdestinations;
+extern const char *dest_name[MAXDESTS]; // = DESTINATION_name ;
 extern const char *dest_addr[MAXDESTS]; // = DESTINATION_ADDR ;
+
+
 extern int dest_port[MAXDESTS]; // = DESTINATION_PORT ;
 extern int dest_channel[MAXDESTS];// =0;
-
-
 
 #define CAMERA_PIO      pio0
 #define CAMERA_BASE_PIN 16
@@ -66,8 +73,11 @@ extern uint16_t ftextpos;
 
 
 //wifi
-extern const char * s_wifi_ssid;
-extern const char * s_wifi_pass;
+//extern const char * wifi_ssid;
+//extern const char * wifi_pass;
+uint8_t usedwifi=0;
+extern const char *wifi_ssid[MAXWIFI];
+extern const char *wifi_pass[MAXWIFI];
 
 //TEST
 extern int loopback_audio;
@@ -89,14 +99,15 @@ volatile uint8_t SendSound=0;
 
 volatile int GotData=0;
 
-volatile uint8_t p_buffer [600];
+//volatile uint8_t p_buffer [600];
 
 volatile uint8_t receiving=0;
 
+uint16_t seed=0;
 
 //screen
 void IPScreen(void);
-
+void DisplayError(char * errtext);
 
 extern uint16_t fringpos;
 
@@ -118,7 +129,7 @@ static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p,
         if (yrx==255){
             if (loopback_audio==0){
               uint8_t v;
-              for(v=0;v<SoundPacket;v++) AddToSpkBuffer(_pData[1+v]);
+              for(v=0;v<SOUNDPACKET;v++) AddToSpkBuffer(_pData[1+v]);
             }  
         }
     }
@@ -134,10 +145,11 @@ static void udpReceiveCallback(void *_arg, struct udp_pcb *_pcb,struct pbuf *_p,
 void init_udp(){
     err_t er;
 
+    printf("Init UDP %s\n",dest_addr[dest]);
     //setup udp TX
     ipaddr_aton(dest_addr[dest], &target_addr);
     pcb = udp_new();
-    er=udp_bind(pcb, IP_ADDR_ANY, LOCAL_PORT);
+    er=udp_bind(pcb, IP_ADDR_ANY, local_port);
     if (er != ERR_OK) {
             printf("Failed to bind RX UDP! error=%d", er);
         }
@@ -152,6 +164,8 @@ void send_udp(char* msg,int msglen){
         int a;
         for(a=0;a<msglen;a++) req[a]=msg[a];
         req[a]=0;
+        //set dest address - port
+        ipaddr_aton(dest_addr[dest], &target_addr);
         err_t er = udp_sendto(pcb, p, &target_addr, dest_port[dest]);
         pbuf_free(p);
         if (er != ERR_OK) {
@@ -179,17 +193,30 @@ void init_network(){
         }
         cyw43_arch_enable_sta_mode();
   
-
-        printf("Connecting to Wi-Fi...\n");
+        
+        printf("Connecting to Wi-Fi %s ...\n",wifi_ssid[usedwifi]);
         int x=1;
+        int t=10;
         while(x){
-            x=cyw43_arch_wifi_connect_timeout_ms(s_wifi_ssid, s_wifi_pass, CYW43_AUTH_WPA2_AES_PSK, 30000);
+            DisplayDigit(usedwifi,1,BLUE,WHITE,BLACK );
+            x=cyw43_arch_wifi_connect_timeout_ms(wifi_ssid[usedwifi], wifi_pass[usedwifi], CYW43_AUTH_WPA2_AES_PSK, 5000);
             if (x) {
-                printf("trying. \n");
-                sleep_ms(500);
+                printf("trying. SSID[%i] %s \n",usedwifi,wifi_ssid[usedwifi]);
+                sleep_ms(100);
+                t=t+1;
+                if (t>1){
+                   usedwifi++;
+                   t=0;
+                   if ((usedwifi==MAXWIFI) || wifi_ssid[usedwifi][0]==0 ){
+                      printf("\n\nSorry, given up with the WIFI here\n");
+                      DisplayError("Cant Conn to WiFi");
+                      sleep_ms(1000);
+                      while(1);
+                   }
+                }
             } else {
-                printf("\n\n************ Connected **************\n\n");
-                printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),LOCAL_PORT,dest_addr[dest],dest_port[dest] );
+                printf("\n\n************ Connected to %s **************\n\n",wifi_ssid[usedwifi]);
+                printf("MyIP %s:%i -  Dest Ip %s:%i \n\n",ip4addr_ntoa(netif_ip4_addr(netif_list)),local_port,dest_addr[dest],dest_port[dest] );
                 printf("*************************************\n\n");
                 ftextpos=1;
 
@@ -228,6 +255,23 @@ void Rect(uint16_t x,uint16_t x1,uint16_t y,uint16_t y1,uint16_t colour){
     LCD_WriteRectangle( x, y,(x1-x),(y1-y), colour);  
 }
 
+void DisplayError(char * errtext){
+  char temp[100];
+  ErrorBackground(RED, BLACK);
+  sprintf(temp," %s ",errtext);
+  drawtext90centred(115, temp, WHITE, RED);
+  sleep_ms(1000);
+  while(1);
+}
+
+void DisplaySDError(int err){
+  char temp[250];
+  if (SDStatus==1) sprintf(temp,"No SD Card");
+  if (SDStatus==2) sprintf(temp,"INI file read error ");
+  DisplayError(temp);
+  
+}
+
 void TestScreen(void){
 
    Rect(40,80,40,80,RED);
@@ -244,210 +288,63 @@ void TestScreen(void){
    
 }
 
-void SDErrorScreen(void){
-  printf("SD Error\n");  
-  ClearScreen();
-  char temp[250];
-  if (SDStatus==1) sprintf(temp,"No SD Card");
-  if (SDStatus==2) sprintf(temp,"INI file read error ");
-  drawtext90centred(100, temp, WHITE, BLACK);
-  printf("\nHalted SD Error\n");
-  while(1);
-}
-
-
-int64_t prn;
-
-//truely awfull psudo random generator , but ok for noise on screen display 
-int16_t psudorand(void){
-  prn = prn * 1103515243 + 12345;
-  return (uint16_t)(prn >> 15) & 0xffff;
-}
 
 void NoSigScreen(void){
-  printf("No Sig\n");
-  ClearScreen();
+    printf("No Sig\n");
+    ClearScreen();
+    uint16_t n;
+    for(int y=0;y<240;y+=7){
+/*        for(int x=0;x<240;x+=4){     
+            n=rand()&& 0xffff;
+            LCD_WritePixel(x,y,n);
+        }
+*/	
+        uint8_t x=0;
+        uint8_t yy=0;
+        while(x<240){
+            x+=1+(get_rand_32() & 7);     
+            yy=(get_rand_32() & 7);
+            n=(uint16_t)get_rand_32();
+            LCD_WritePixel(x,y+yy,n);
+        }
+    }
   
-//  prn=MikeBuffer[0]+MikeBuffer[1]+1;
-  prn=1;
+    char temp[250];
 
-  uint16_t n;
-  for(int y=0;y<240;y+=3){
-     for(int x=0;x<240;x+=3){     
-       n=psudorand();
-       LCD_WritePixel(x,y,n);
-     }
-  }
-  
-  char temp[250];
-  sprintf(temp,"-- NO SIGNAL --");
-  drawtext90centred(70, temp, RED, BLACK);
-//  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
-//  drawtext90centred(110, temp, WHITE, BLACK);
+    sprintf(temp,"Destination %i",dest);
+    drawtext90centred(200,  temp, Copper, BLACK);
 
-  sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
-  drawtext90centred(120, temp, WHITE, BLACK);
-  sprintf(temp,"Destination %s",dest_addr[dest]);
-  drawtext90centred(110, temp, WHITE, BLACK);
-  sprintf(temp,"Channel %i",dest_channel[dest]);
-  drawtext90centred(100,  temp, WHITE, BLACK); 
-  sprintf(temp,"Destination %i",dest);
-  drawtext90centred(90,  temp, WHITE, BLACK);
+    sprintf(temp,"%s",dest_name[dest]);
+    drawtext90centred(185,  temp, WHITE, BLACK);
 
 
+    sprintf(temp,"Connection Details");
+    drawtext90centred(150, temp, Copper, BLACK);
+    
+    sprintf(temp,"%s",dest_addr[dest]);
+    drawtext90centred(130, temp, WHITE, BLACK);
+    sprintf(temp,"Port %i",dest_port[dest]);
+    drawtext90centred(115, temp, WHITE, BLACK);
+    
+    sprintf(temp,"Channel %i",dest_channel[dest]);
+    drawtext90centred(90,  temp, WHITE, BLACK); 
+
+    sprintf(temp,"-- NO SIGNAL --");
+    drawtext90centred(60, temp, WHITE, RED);
+
+    sprintf(temp,"MyIP %s",ip4addr_ntoa(netif_ip4_addr(netif_list)));
+    drawtext90centred(45, temp, BLUE, BLACK);
+    sprintf(temp,"SSID[%i] %s",usedwifi,wifi_ssid[usedwifi]);
+    drawtext90centred(35, temp, BLUE, BLACK);
+    sprintf(temp,"PORT %i",local_port);
+    drawtext90centred(25, temp, BLUE, BLACK);
 }
 
 void IPScreen(void){
   printf("ip screen\n");
-//  ClearScreen();
-//  char temp[250];
   NoSigScreen();
 }
 
-/*
-//******************************* Sound Stuff *****************************
-
-void SetPWM(void){
-    gpio_init(soundIO1);
-    gpio_set_dir(soundIO1,GPIO_OUT);
-    gpio_set_function(soundIO1, GPIO_FUNC_PWM);
-
-    gpio_init(soundIO2);
-    gpio_set_dir(soundIO2,GPIO_OUT);
-    gpio_set_function(soundIO2, GPIO_FUNC_PWM);
-
-    PWMslice=pwm_gpio_to_slice_num (soundIO1);
-    pwm_set_clkdiv(PWMslice,16);
-    pwm_set_both_levels(PWMslice,0x80,0x80);
-
-    pwm_set_output_polarity(PWMslice,true,false);
-
-    pwm_set_wrap (PWMslice, 256);
-    pwm_set_enabled(PWMslice,true);
-
-}
-
-
-void SetA2D(void){
-    adc_init();
-    gpio_set_dir(Mike,GPIO_IN);
-    adc_gpio_init(Mike);
-    adc_select_input(MikeADC);
-}
-
-void ZeroMikeBiffer(void){
-   MikeIn=0;
-   MikeOut=0;
-}
-
-void ZeroSpkBuffer(void){
-   SpkIn=0;
-   SpkOut=0;
-}
-
-
-void AddToMikeBuffer(uint8_t v){
-    MikeBuffer[MikeIn]=v;
-    MikeIn++;
-    if (MikeIn==SoundBuffMax){
-          MikeIn=0;
-    }
-}
-
-void AddToSpkBuffer(uint8_t v){
-    SpkBuffer[SpkIn]=v;
-    SpkIn++;
-    if (SpkIn==SoundBuffMax){
-          SpkIn=0;
-    }
-}
-
-uint8_t GetFromSpkBuffer(void){
-    uint8_t c=0;
-    if(SpkIn!=SpkOut){
-        c=SpkBuffer[SpkOut];
-        SpkOut++;
-        if (SpkOut==SoundBuffMax){
-            SpkOut=0;
-        }
-    }
-    return c;
-}
-/*
-uint8_t GetFromMikeBuffer(void){
-    uint8_t c=0;
-    if(MikeIn!=MikeOut){
-        c=MikeBuffer[MikeOut];
-        MikeOut++;
-        if (MikeOut==SoundBuffMax){
-            MikeOut=0;
-        }
-    }
-    return c;
-}
-
-
-
-//sample mikrophone and output buffer to pwm every 125uS
-bool Sound_Timer_Callback(struct repeating_timer *t){
-    uint16_t a;
-    //get a2d into mike buffer
-    a=adc_read();
-    busy_wait_us(AUDIOFILTER);
-    a=a+adc_read();
-    busy_wait_us(AUDIOFILTER);
-    a=a+adc_read();
-    busy_wait_us(AUDIOFILTER);
-    a=a+adc_read();
-    a=a>>6; //scales from 4*4096 to 256
-    
-    if (loopback_audio==0){
-        AddToMikeBuffer(a);   
-        a=GetFromSpkBuffer();
-    }
-     
-    pwm_set_both_levels(PWMslice,a,a);
-   
-    if (MikeIn==SoundPacket+1){
-        SendSound=1;
-        MikeIn=1;
-        MikeBuffer[0]=255;
-   
-       if (receiving>1)receiving--;
-    }
-      
-    return 1; // make repeating
-}
-
-
-void init_sound(void){
-    SetPWM();
-    SetA2D();
-    MikeIn=1;
-    MikeBuffer[0]=255;    
-    //start 125uS interrupt
-//    add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
-    printf("Sound INIT\n");
-}
-
-void send_sound(void){
-   if (SendSound==1){
-       char temp[3];
-       send_udp_blocking(MikeBuffer, SoundPacket+1);
-       SendSound=0;
-       sc++;
-       if(sc>100){
-           //send channel info every so often
-           sc=0;
-           temp[0]=253;
-           temp[1]=dest_channel[dest];
-           send_udp_blocking(temp, 2);
-       }  
-    }
-
-
-}
-*/
 
 // ***************************** LED *********************
 void PCB_LED(int x){
@@ -464,8 +361,12 @@ void JogChange(uint8_t jog){
         printf("Jog:%i\n",jog);
         dest=jog;
         receiving=50; //channel changed, we are no longer receiving, delay until no sifg screen
-        DisplayDigit(jog,WHITE,Red,BLACK );
-        
+        DisplayDigit(jog,0,WHITE,Copper,BLACK );
+//        DisplayDigit(jog,WHITE,Red,BLACK );
+//        init_udp();
+// NEEDS TO DO REINIT OF ADDRESS SOMEHOW
+// done in send ????
+
 }
 
 
@@ -474,7 +375,7 @@ void JogChange(uint8_t jog){
 
 void Core1Main(void){
 
-        printf("Core 1 start audio interrupt\n");
+        printf("Core 1 - start audio interrupt\n");
 //        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
         StartSoundTimer();
         RotEncSetup();
@@ -492,17 +393,25 @@ int main() {
 	init_sound();
 	// Wait some time for USB serial connection
 	sleep_ms(3000);
-
+	splash();
 	printf("**************** STARTING Core 0 **************** \n\n");
-        printf("Getting settings\n");
-        get_settings();
-        printf("Got settings\n");
 
         //init screen
 	LCD_initDisplay();
 	LCD_setRotation(3);
 	ClearScreen();
 	TestScreen();
+	
+	//get settings
+        printf("Getting settings\n");
+        int err;
+        if(err=get_settings()>0){
+           printf("Bad Settings\n");
+           DisplaySDError(err);
+
+        }
+        printf("Got settings\n");
+
 
         //init WiFi and UDP
         init_network();  
@@ -511,15 +420,6 @@ int main() {
 	multicore_reset_core1(); 
         multicore_launch_core1(Core1Main);
         printf("\n#Core 1 Started#\n\n");
-
-
-		
-//	const uint LED_PIN = GPIO_LED_PIN;
-//	gpio_init(LED_PIN);
-//	gpio_set_dir(LED_PIN, GPIO_OUT);
-
-//        printf("Waiting Forever...\n");
-//        while(1);
         
 	//camera init
 	i2c_init(CAMERA_I2C, 100000);
@@ -547,18 +447,20 @@ int main() {
 	int ret = camera_init(&camera, &platform);
 	if (ret) {
 		printf("camera_init failed: %d\n", ret);
-		return 1;
+		DisplayError("Camera Fail");
+		sleep_ms(1000);
+		while(1);
 	}else{
 	   printf("Camera_init complete\n");
 	}
 
-	sleep_ms(100);
+/*	sleep_ms(100);
 
         if (SDStatus<3){
            SDErrorScreen();        
         
         }
-
+*/
 	const uint16_t camera_width = CAMERA_WIDTH_DIV2;
 	const uint16_t camera_height = CAMERA_HEIGHT_DIV2;
 
@@ -587,21 +489,27 @@ int main() {
 
 //		wait_for_camera_finished(&camera);
 
-		ret = camera_capture_blocking(&camera, buf, true);
+//		ret = camera_capture_blocking(&camera, buf, true);
+		ret =  camera_capture_nonblocking(&camera, buf, true);
+		
+		 while(is_camera_busy(&camera)) {
+                    send_sound();
+                }
 
+		
 		if (ret != 0) {
 			printf("Capture error: %d\n", ret);
 		} else {
 			uint16_t  y, x;
 			uint32_t yoff;
-		        char msg[display_width*2+1];
+			uint16_t dw2=display_width*2;
+		        char msg[dw2+1];
 			for (y = 0; y < display_height; y++) {
 			        yoff=buf->strides[0] * y;
-
+			        // copy 1 line to tx buffer prefixed by line number    
                                 msg[0]=(uint8_t)y;
-                                for (x = 0; x < display_width*2; x++) {
-                                    msg[x+1]=buf->data[0][yoff+xoff+x];
-                                
+                                for (x = 0; x < dw2; x++) {
+                                    msg[x+1]=buf->data[0][yoff+xoff+x];                                
                                 }
                                 send_udp_blocking(msg, msglength);
                                 //interleave sound if needed
@@ -614,14 +522,14 @@ int main() {
                                 }//if
 			}//for
 		}//else
-            tight_loop_contents();
-            
+//             tight_loop_contents();
+//            send_sound();
             // if receiving down to 1 set NoSig Screen
             if(receiving==1){
               receiving=0;
               NoSigScreen();
             }//if 
-
+            seed++;
 
 	}//while
 
