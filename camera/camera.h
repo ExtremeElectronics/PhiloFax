@@ -19,7 +19,7 @@
 #define CAMERA_WIDTH_DIV2  320
 #define CAMERA_HEIGHT_DIV2 240
 
-#define CAMERA_MAX_N_PLANES 3
+#define CAMERA_MAX_N_PLANES 1
 
 // Stores a camera frame.
 // Can be allocated dynamically using camera_buffer_alloc/camera_buffer_free,

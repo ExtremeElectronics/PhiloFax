@@ -199,7 +199,7 @@ void init_network(){
         int t=10;
         while(x){
             DisplayDigit(usedwifi,1,BLUE,WHITE,BLACK );
-            x=cyw43_arch_wifi_connect_timeout_ms(wifi_ssid[usedwifi], wifi_pass[usedwifi], CYW43_AUTH_WPA2_AES_PSK, 5000);
+            x=cyw43_arch_wifi_connect_timeout_ms(wifi_ssid[usedwifi], wifi_pass[usedwifi], CYW43_AUTH_WPA2_MIXED_PSK, 7000);
             if (x) {
                 printf("trying. SSID[%i] %s \n",usedwifi,wifi_ssid[usedwifi]);
                 sleep_ms(100);
@@ -376,8 +376,7 @@ void JogChange(uint8_t jog){
 void Core1Main(void){
 
         printf("Core 1 - start audio interrupt\n");
-//        add_repeating_timer_us(125, Sound_Timer_Callback, NULL, &stimer);
-        StartSoundTimer();
+        StartSoundTimer(); // start timer from core 1
         RotEncSetup();
         
         while(1){
